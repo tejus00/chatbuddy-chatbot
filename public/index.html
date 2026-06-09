@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flask Gemini Chat</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="chat-container">
+    <header class="chat-header">
+      <h1>ChatBuddy</h1>
+      <p class="sub">Gemini replies if configured; local rules otherwise.</p>
+    </header>
+
+    <section id="messages" class="messages" aria-live="polite"></section>
+
+    <form id="inputForm" class="input-form" autocomplete="off">
+      <input id="messageInput" type="text" placeholder="Type a message..." required />
+      <button type="submit">Send</button>
+      <button type="button" id="showEmployeesBtn">Show Employees</button>
+    </form>
+  </main>
+
+  <script>
+    const form = document.getElementById('inputForm');
+    const input = document.getElementById('messageInput');
+    const messages = document.getElementById('messages');
+
+    function addMessage(text, cls='bot', meta='') {
+      const el = document.createElement('div');
+      el.className = 'message ' + cls;
+      el.innerText = text;
+      messages.appendChild(el);
+      if (meta) {
+        const m = document.createElement('div');
+        m.className = 'meta';
+        m.innerText = meta;
+        messages.appendChild(m);
+      }
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function sendMessage(text) {
+      addMessage(text, 'user');
+      const thinking = document.createElement('div');
+      thinking.className = 'message bot thinking';
+      thinking.innerText = 'Thinking...';
+      messages.appendChild(thinking);
+      messages.scrollTop = messages.scrollHeight;
+
+      try {
+        const res = await fetch('/chat', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+        thinking.remove();
+        if (data.reply) {
+          addMessage(data.reply, 'bot', `source: ${data.source || 'unknown'}`);
+        } else {
+          addMessage("No reply.", 'bot');
+        }
+      } catch (err) {
+        thinking.remove();
+        addMessage("Network error.", 'bot');
+        console.error(err);
+      }
+    }
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const v = input.value.trim();
+      if (!v) return;
+      input.value = '';
+      sendMessage(v);
+    });
+
+    // load history
+    (async function loadHistory() {
+      try {
+        const res = await fetch('/history');
+        if (!res.ok) return;
+        const data = await res.json();
+        data.forEach(m => addMessage(m.text, m.sender === 'user' ? 'user' : 'bot', m.sender === 'user' ? '' : `source: ${m.source || ''}`));
+      } catch (e) {
+        console.error('history load failed', e);
+      }
+    })();
+    
+document.getElementById("showEmployeesBtn").addEventListener("click", async () => {
+  try {
+    const res = await fetch("/employees");
+    if (!res.ok) {
+      addMessage("Failed to load employees", "bot");
+      return;
+    }
+
+    const data = await res.json();
+    if (data.length === 0) {
+      addMessage("No employees in database.", "bot");
+      return;
+    }
+
+    // Build formatted message
+    let text = "📋 Employee List:\n\n";
+    data.forEach(emp => {
+      text += `• ${emp.name} (${emp.email})\n   Dept: ${emp.department}\n   Role: ${emp.designation}\n   Salary: ₹${emp.salary}\n\n`;
+    });
+
+    addMessage(text, "bot", "source: employee-db");
+  } catch (err) {
+    addMessage("Error loading employees", "bot");
+    console.error(err);
+  }
+});
+
+
+    addMessage("Hi — this is ChatBuddy. Try: 'hi', 'what is your name', 'explain recursion'.", 'bot');
+  </script>
+</body>
+</html>
